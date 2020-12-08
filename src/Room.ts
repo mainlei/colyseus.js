@@ -16,7 +16,7 @@ import { Context, Schema } from '@colyseus/schema';
 import * as encode from '@colyseus/schema/lib/encoding/encode';
 import * as decode from '@colyseus/schema/lib/encoding/decode';
 
-export interface RoomAvailable<Metadata> {
+export interface RoomAvailable<Metadata = any> {
     roomId: string;
     clients: number;
     maxClients: number;
@@ -28,14 +28,13 @@ export class Room<State= any> {
     public sessionId: string;
 
     public name: string;
+    public connection: Connection;
 
     // Public signals
-    public onJoin = createSignal();
     public onStateChange = createSignal<(state: State) => void>();
     public onError = createSignal<(code: number, message?: string) => void>();
     public onLeave = createSignal<(code: number) => void>();
-
-    public connection: Connection;
+    protected onJoin = createSignal();
 
     public serializerId: string;
     protected serializer: Serializer<State>;
@@ -55,13 +54,9 @@ export class Room<State= any> {
             this.serializer = new (getSerializer("schema"));
             this.rootSchema = rootSchema;
             (this.serializer as SchemaSerializer).state = new rootSchema();
-
-        } else {
-            // TODO: remove default serializer. it should arrive only after JOIN_ROOM.
-            this.serializer = new (getSerializer("fossil-delta"));
         }
 
-        this.onError((code, message) => console.error(`colyseus.js - onError => (${code}) ${message}`));
+        this.onError((code, message) => console.warn(`colyseus.js - onError => (${code}) ${message}`));
         this.onLeave(() => this.removeAllListeners());
     }
 
@@ -71,12 +66,13 @@ export class Room<State= any> {
         this.connection.onmessage = this.onMessageCallback.bind(this);
         this.connection.onclose = (e: CloseEvent) => {
             if (!this.hasJoined) {
-                console.error(`Room connection was closed unexpectedly (${e.code}): ${e.reason}`);
+                console.warn(`Room connection was closed unexpectedly (${e.code}): ${e.reason}`);
                 this.onError.invoke(e.code, e.reason);
                 return;
             }
 
-            this.onLeave.invoke(e.code)
+            this.onLeave.invoke(e.code);
+            this.destroy();
         };
         this.connection.onerror = (e: CloseEvent) => {
             console.warn(`Room, onError (${e.code}): ${e.reason}`);
@@ -110,7 +106,7 @@ export class Room<State= any> {
         type: string | number,
         callback: (message: T) => void
     )
-    public onMessage<T = any>(
+    public onMessage(
         type: '*' | string | number | typeof Schema,
         callback: (...args: any[]) => void
     ) {
@@ -150,7 +146,7 @@ export class Room<State= any> {
     // this method is useful only for FossilDeltaSerializer
     public listen(segments: string, callback: Function, immediate?: boolean) {
         if (this.serializerId === "schema") {
-            console.error(`'${this.serializerId}' serializer doesn't support .listen() method here.`);
+            console.warn(`'${this.serializerId}' serializer doesn't support .listen() method here.`);
             return;
 
         } else if (!this.serializerId) {
@@ -167,13 +163,11 @@ export class Room<State= any> {
     }
 
     public removeAllListeners() {
-        if (this.serializer) {
-            this.serializer.teardown();
-        }
         this.onJoin.clear();
         this.onStateChange.clear();
         this.onError.clear();
         this.onLeave.clear();
+        this.onMessageHandlers.events = {};
     }
 
     protected onMessageCallback(event: MessageEvent) {
@@ -186,19 +180,14 @@ export class Room<State= any> {
             this.serializerId = utf8Read(bytes, offset);
             offset += utf8Length(this.serializerId);
 
-            // get serializer implementation
-            const serializer = getSerializer(this.serializerId);
-            if (!serializer) {
-                throw new Error("missing serializer: " + this.serializerId);
-            }
-
-            // TODO: remove this check
-            if (this.serializerId !== "fossil-delta" && !this.rootSchema) {
+            // Instantiate serializer if not locally available.
+            if (!this.serializer) {
+                const serializer = getSerializer(this.serializerId)
                 this.serializer = new serializer();
             }
 
             if (bytes.length > offset && this.serializer.handshake) {
-                this.serializer.handshake(bytes, { offset: 1 });
+                this.serializer.handshake(bytes, { offset });
             }
 
             this.hasJoined = true;
@@ -219,11 +208,13 @@ export class Room<State= any> {
             this.leave();
 
         } else if (code === Protocol.ROOM_DATA_SCHEMA) {
+            const it = { offset: 1 };
+
             const context: Context = (this.serializer.getState() as any).constructor._context;
-            const type = context.get(bytes[1]);
+            const type = context.get(decode.number(bytes, it));
 
             const message: Schema = new (type as any)();
-            message.decode(bytes, { offset: 2 });
+            message.decode(bytes, it);
 
             this.dispatchMessage(type, message);
 
@@ -271,6 +262,12 @@ export class Room<State= any> {
 
         } else {
             console.warn(`onMessage not registered for type '${type}'.`);
+        }
+    }
+
+    private destroy () {
+        if (this.serializer) {
+            this.serializer.teardown();
         }
     }
 
