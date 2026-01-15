@@ -1,19 +1,18 @@
 import './legacy';
 
-export { Client, JoinOptions } from './Client';
-export { Protocol, ErrorCode } from './Protocol';
+export { Client, JoinOptions, MatchMakeError, type EndpointSettings, type ClientOptions } from './Client';
+export { Protocol, ErrorCode, SeatReservation } from './Protocol';
 export { Room, RoomAvailable } from './Room';
-export { DataChange } from '@gamestdio/state-listener';
-export { Auth, Platform, Device } from "./Auth";
+export { Auth, type AuthSettings, type PopupSettings } from "./Auth";
+export { ServerError } from './errors/Errors';
 
 /*
  * Serializers
  */
-
-import { FossilDeltaSerializer } from './serializer/FossilDeltaSerializer';
-import { SchemaSerializer } from "./serializer/SchemaSerializer";
+import { SchemaSerializer, getStateCallbacks } from "./serializer/SchemaSerializer";
+import { NoneSerializer } from "./serializer/NoneSerializer";
 import { registerSerializer } from './serializer/Serializer';
 
-export { registerSerializer, FossilDeltaSerializer, SchemaSerializer };
-registerSerializer('fossil-delta', FossilDeltaSerializer);
+export { registerSerializer, SchemaSerializer, getStateCallbacks };
 registerSerializer('schema', SchemaSerializer);
+registerSerializer('none', NoneSerializer);

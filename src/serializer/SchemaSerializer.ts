@@ -1,37 +1,61 @@
 import { Serializer } from "./Serializer";
-import { Schema, Reflection } from "@colyseus/schema";
-import { Iterator } from "@colyseus/schema/lib/encoding/decode";
+import { Schema, Decoder, Reflection, Iterator, getDecoderStateCallbacks } from "@colyseus/schema";
+import type { Room } from "../Room";
 
 export type SchemaConstructor<T = Schema> = new (...args: any[]) => T;
 
+//
+// TODO: use a schema interface, which even having duplicate definitions, it could be used to get the callback proxy.
+// 
+// ```ts
+//     export type SchemaCallbackProxy<RoomState> = (<T extends ISchema>(instance: T) => CallbackProxy<T>);
+//     export function getStateCallbacks<T extends ISchema>(room: Room<T>) {
+// ```
+//
+export function getStateCallbacks<T>(room: Room<T>) {
+    try {
+        // SchemaSerializer
+        // @ts-ignore
+        return getDecoderStateCallbacks<T>((room['serializer'] as unknown as SchemaSerializer<T>).decoder);
+    } catch (e) {
+        // NoneSerializer
+        return undefined;
+    }
+}
+
 export class SchemaSerializer<T extends Schema = any> implements Serializer<T> {
     state: T;
+    decoder: Decoder<T>;
 
-    setState(rawState: any): void {
-        this.state.decode(rawState);
+    setState(encodedState: Buffer, it?: Iterator) {
+        this.decoder.decode(encodedState, it);
     }
 
     getState() {
         return this.state;
     }
 
-    patch(patches) {
-        this.state.decode(patches);
+    patch(patches: Buffer, it?: Iterator) {
+        return this.decoder.decode(patches, it);
     }
 
     teardown() {
-        // this.state.onRemove
+        this.decoder.root.clearRefs();
     }
 
-    handshake(bytes: number[], it?: Iterator) {
+    handshake(bytes: Buffer, it?: Iterator) {
         if (this.state) {
-            // validate client/server definitinos
-            const reflection = new Reflection();
-            reflection.decode(bytes, it);
+            //
+            // TODO: validate definitions against concreate this.state instance
+            //
+            Reflection.decode(bytes, it); // no-op
+
+            this.decoder = new Decoder(this.state);
 
         } else {
             // initialize reflected state from server
-            this.state = Reflection.decode(bytes) as any;
+            this.decoder = Reflection.decode(bytes, it);
+            this.state = this.decoder.state;
         }
     }
 }

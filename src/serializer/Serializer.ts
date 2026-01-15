@@ -1,11 +1,15 @@
+import type { Iterator } from "@colyseus/schema";
+
+export type BufferLike = number[] | Uint8Array | Buffer;
+
 export interface Serializer<State> {
-    setState(data: any): void;
+    setState(data: BufferLike, it?: Iterator): void;
     getState(): State;
 
-    patch(data: any): void;
+    patch(data: BufferLike, it?: Iterator): void;
     teardown(): void;
 
-    handshake?(bytes: number[], it?: any): void;
+    handshake?(bytes: BufferLike, it?: any): void;
 }
 
 const serializers: { [id: string]: any } = {};
@@ -15,5 +19,7 @@ export function registerSerializer (id: string, serializer: any) {
 }
 
 export function getSerializer (id: string) {
-    return serializers[id];
+    const serializer = serializers[id];
+    if (!serializer) { throw new Error("missing serializer: " + id); }
+    return serializer;
 }

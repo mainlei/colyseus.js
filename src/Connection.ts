@@ -1,42 +1,41 @@
-import WebSocketClient from '@gamestdio/websocket';
-import * as msgpack from './msgpack';
+import { H3TransportTransport } from "./transport/H3Transport";
+import { ITransport, ITransportEventMap } from "./transport/ITransport";
+import { WebSocketTransport } from "./transport/WebSocketTransport";
 
-export class Connection extends WebSocketClient {
-    private _enqueuedCalls: any[] = [];
+export class Connection implements ITransport {
+    transport: ITransport;
+    events: ITransportEventMap = {};
 
-    constructor(url: string, autoConnect: boolean = true) {
-        super(url, undefined, { connect: autoConnect });
-    }
+    constructor(protocol?: string) {
+        switch (protocol) {
+            case "h3":
+                this.transport = new H3TransportTransport(this.events);
+                break;
 
-    public onOpenCallback(event) {
-        super.onOpenCallback();
-
-        this.binaryType = 'arraybuffer';
-
-        if (this._enqueuedCalls.length > 0) {
-            for (const [method, args] of this._enqueuedCalls) {
-                this[method].apply(this, args);
-            }
-
-            // clear enqueued calls.
-            this._enqueuedCalls = [];
+            default:
+                this.transport = new WebSocketTransport(this.events);
+                break;
         }
     }
 
-    public send(data: ArrayBuffer | Array<number>): void {
-        if (this.ws.readyState === WebSocketClient.OPEN) {
-            if (data instanceof ArrayBuffer) {
-                return super.send(data);
+    connect(url: string, options?: any): void {
+        this.transport.connect.call(this.transport, url, options);
+    }
 
-            } else if (Array.isArray(data)) {
-                return super.send((new Uint8Array(data)).buffer);
-            }
+    send(data: Buffer | Uint8Array): void {
+        this.transport.send(data);
+    }
 
-        } else {
-            // WebSocket not connected.
-            // Enqueue data to be sent when readyState == OPEN
-            this._enqueuedCalls.push(['send', [data]]);
-        }
+    sendUnreliable(data: Buffer | Uint8Array): void {
+        this.transport.sendUnreliable(data);
+    }
+
+    close(code?: number, reason?: string): void {
+        this.transport.close(code, reason);
+    }
+
+    get isOpen() {
+        return this.transport.isOpen;
     }
 
 }

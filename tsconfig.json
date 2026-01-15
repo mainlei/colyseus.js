@@ -1,18 +1,15 @@
 {
+    "extends": "./tsconfig/tsconfig.all.json",
     "compilerOptions": {
-        "target": "es5",
-        "module": "commonjs",
-        "lib": ["dom", "es6"],
+        "target": "es6",
+        "outDir": "lib",
+        "declaration": true,
+        "downlevelIteration": true, /*only for tests*/
         "allowSyntheticDefaultImports": true,
         "noImplicitAny": false,
-        "sourceMap": false,
         "esModuleInterop": true,
         "experimentalDecorators": true,
-        "declaration": true,
-        "outDir": "lib"
-    },
-    "include": [
-        "src/**.ts",
-        "typings/cocos-creator.d.ts"
-    ]
+        "inlineSources": true,
+        "skipLibCheck": true
+    }
 }
